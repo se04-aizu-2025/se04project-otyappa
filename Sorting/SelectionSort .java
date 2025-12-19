@@ -1,39 +1,32 @@
-public class SelectionSort {
+package sorting;
 
-    // 配列を選択ソートで並び替えるメソッド
-    public static void selectionSort(int[] array) {
+public class SelectionSort implements Sorter {
 
-        int n = array.length;
+    @Override
+    public String name() {
+        return "Selection Sort";
+    }
+
+    @Override
+    public void sort(int[] arr) {
+        int n = arr.length;
 
         // 配列の先頭から順に並び替える
         for (int i = 0; i < n - 1; i++) {
-
             // まだ並び替えていない部分の最小値の位置
             int minIndex = i;
 
             // 最小値を探す
             for (int j = i + 1; j < n; j++) {
-                if (array[j] < array[minIndex]) {
+                if (arr[j] < arr[minIndex]) {
                     minIndex = j;
                 }
             }
 
             // 最小値を先頭と交換
-            int temp = array[minIndex];
-            array[minIndex] = array[i];
-            array[i] = temp;
-        }
-    }
-
-    // 動作確認用
-    public static void main(String[] args) {
-        int[] data = {5, 3, 4, 1, 2};
-
-        selectionSort(data);
-
-        // 結果を表示
-        for (int num : data) {
-            System.out.print(num + " ");
+            int temp = arr[minIndex];
+            arr[minIndex] = arr[i];
+            arr[i] = temp;
         }
     }
 }
