@@ -1,14 +1,22 @@
-public class BubbleSort {
+package sorting;
 
-    public void sort(int[] array) {
-        int n = array.length;
+public class BubbleSort implements Sorter {
+
+    @Override
+    public String name() {
+        return "Bubble Sort";
+    }
+
+    @Override
+    public void sort(int[] arr) {
+        int n = arr.length;
 
         for (int i = 0; i < n - 1; i++) {
             for (int j = 0; j < n - 1 - i; j++) {
-                if (array[j] > array[j + 1]) {
-                    int temp = array[j];
-                    array[j] = array[j + 1];
-                    array[j + 1] = temp;
+                if (arr[j] > arr[j + 1]) {
+                    int temp = arr[j];
+                    arr[j] = arr[j + 1];
+                    arr[j + 1] = temp;
                 }
             }
         }
