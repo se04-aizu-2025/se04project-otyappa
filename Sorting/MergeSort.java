@@ -9,6 +9,7 @@ public class MergeSort implements Sorter {
 
     @Override
     public void sort(int[] arr) {
+        if (arr.length <= 1) return;
         mergeSortRecursive(arr, 0, arr.length - 1);
     }
 
@@ -17,9 +18,11 @@ public class MergeSort implements Sorter {
 
         int mid = (left + right) / 2;
 
+        // 左右を分割して再帰
         mergeSortRecursive(arr, left, mid);
         mergeSortRecursive(arr, mid + 1, right);
 
+        // マージ処理
         merge(arr, left, mid, right);
     }
 
@@ -36,8 +39,11 @@ public class MergeSort implements Sorter {
         int i = 0, j = 0, k = left;
 
         while (i < n1 && j < n2) {
-            if (L[i] <= R[j]) arr[k++] = L[i++];
-            else arr[k++] = R[j++];
+            if (L[i] <= R[j]) {
+                arr[k++] = L[i++];
+            } else {
+                arr[k++] = R[j++];
+            }
         }
 
         while (i < n1) arr[k++] = L[i++];
