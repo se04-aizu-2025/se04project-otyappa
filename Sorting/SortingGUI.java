@@ -3,15 +3,21 @@ package sorting;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
+import java.util.List;
 
 public class SortingGUI {
 
     private final DataGenerator generator = new DataGenerator();
-    private final Sorter sorter = new MergeSort();
+    private final List<Sorter> sorters = List.of(
+            new MergeSort(),
+            new BubbleSort(),
+            new SelectionSort()
+    );
     private int[] currentData = new int[0];
     private final ChartPanel chartPanel = new ChartPanel();
     private final JComboBox<DataGenerator.Pattern> patternCombo =
             new JComboBox<>(new DataGenerator.Pattern[]{DataGenerator.Pattern.RANDOM});
+    private final JComboBox<String> sorterCombo = new JComboBox<>();
     private final JSpinner sizeSpinner = new JSpinner(new SpinnerNumberModel(50, 5, 500, 5));
     private final JSpinner seedSpinner = new JSpinner(new SpinnerNumberModel(42, 0, Integer.MAX_VALUE, 1));
     private final JLabel statusLabel = new JLabel("Ready");
@@ -29,7 +35,9 @@ public class SortingGUI {
         JPanel control = new JPanel();
         control.setLayout(new FlowLayout(FlowLayout.LEFT));
 
-        control.add(new JLabel("Algorithm: Merge Sort"));
+        control.add(new JLabel("Algorithm"));
+        sorters.forEach(s -> sorterCombo.addItem(s.name()));
+        control.add(sorterCombo);
 
         control.add(new JLabel("Pattern: RANDOM"));
         patternCombo.setSelectedItem(DataGenerator.Pattern.RANDOM);
@@ -72,6 +80,12 @@ public class SortingGUI {
         }
 
         int[] dataCopy = currentData.clone();
+        int sorterIdx = sorterCombo.getSelectedIndex();
+        if (sorterIdx < 0 || sorterIdx >= sorters.size()) {
+            statusLabel.setText("No sorter selected");
+            return;
+        }
+        Sorter sorter = sorters.get(sorterIdx);
 
         statusLabel.setText("Sorting with " + sorter.name() + "...");
         setControlsEnabled(false);
@@ -100,6 +114,7 @@ public class SortingGUI {
 
     private void setControlsEnabled(boolean enabled) {
         patternCombo.setEnabled(enabled);
+        sorterCombo.setEnabled(enabled);
         sizeSpinner.setEnabled(enabled);
         seedSpinner.setEnabled(enabled);
     }
