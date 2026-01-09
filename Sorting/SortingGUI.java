@@ -1,9 +1,11 @@
 package sorting;
 
 import javax.swing.*;
+import javax.swing.Timer;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.util.List;
+import java.util.ArrayList;
 
 public class SortingGUI {
 
@@ -21,6 +23,16 @@ public class SortingGUI {
     private final JSpinner sizeSpinner = new JSpinner(new SpinnerNumberModel(50, 5, 500, 5));
     private final JSpinner seedSpinner = new JSpinner(new SpinnerNumberModel(42, 0, Integer.MAX_VALUE, 1));
     private final JLabel statusLabel = new JLabel("Ready");
+    private JButton stepButton;
+    private JButton resetButton;
+    private Timer stepTimer;
+
+    // step-by-step (Bubble Sortのみ対応)
+    private boolean stepModeActive = false;
+    private int stepI = 0;
+    private int stepJ = 0;
+    private List<int[]> mergeSteps = new ArrayList<>();
+    private int mergeStepIndex = 0;
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new SortingGUI().start());
@@ -53,9 +65,13 @@ public class SortingGUI {
         generateButton.addActionListener(this::onGenerate);
         control.add(generateButton);
 
-        JButton sortButton = new JButton("Sort");
-        sortButton.addActionListener(this::onSort);
-        control.add(sortButton);
+        stepButton = new JButton("Step");
+        stepButton.addActionListener(this::onStep);
+        control.add(stepButton);
+
+        resetButton = new JButton("Reset");
+        resetButton.addActionListener(this::onReset);
+        control.add(resetButton);
 
         frame.add(control, BorderLayout.NORTH);
         frame.add(chartPanel, BorderLayout.CENTER);
@@ -72,14 +88,25 @@ public class SortingGUI {
         currentData = generator.generate(pattern, size, seed);
         chartPanel.setData(currentData);
         statusLabel.setText("Generated: " + pattern + " size=" + size + " seed=" + seed);
+
+        // リセット step 状態
+        stopStepTimer();
+        stepModeActive = false;
+        stepI = 0;
+        stepJ = 0;
+        mergeSteps.clear();
+        mergeStepIndex = 0;
     }
 
-    private void onSort(ActionEvent e) {
+    // 一気にソートするボタンは削除したので onSort は不要
+
+    private void onStep(ActionEvent e) {
+        stopStepTimer();
+
         if (currentData == null || currentData.length == 0) {
-            onGenerate(null); // データ未生成なら生成してからソート
+            onGenerate(null);
         }
 
-        int[] dataCopy = currentData.clone();
         int sorterIdx = sorterCombo.getSelectedIndex();
         if (sorterIdx < 0 || sorterIdx >= sorters.size()) {
             statusLabel.setText("No sorter selected");
@@ -87,29 +114,171 @@ public class SortingGUI {
         }
         Sorter sorter = sorters.get(sorterIdx);
 
-        statusLabel.setText("Sorting with " + sorter.name() + "...");
+        if (sorter instanceof BubbleSort) {
+            if (!stepModeActive) {
+                // 初回ステップ: 状態リセット
+                stepModeActive = true;
+                stepI = 0;
+                stepJ = 0;
+                statusLabel.setText("Step mode: Bubble Sort");
+            }
+
+            setControlsEnabled(false);
+
+            stepTimer = new Timer(50, ev -> {
+                boolean finished = advanceBubbleStep();
+                chartPanel.setData(currentData);
+                if (finished) {
+                    statusLabel.setText("Step mode: completed");
+                    stopStepTimer();
+                    setControlsEnabled(true);
+                } else {
+                    statusLabel.setText("Step mode: i=" + stepI + " j=" + stepJ);
+                }
+            });
+            stepTimer.start();
+        } else if (sorter instanceof MergeSort) {
+            startMergeStepMode();
+        } else if (sorter instanceof SelectionSort) {
+            startSelectionStepMode();
+        } else {
+            statusLabel.setText("Step mode: supported for Bubble / Merge / Selection only");
+        }
+    }
+
+    private void onReset(ActionEvent e) {
+        stopStepTimer();
+        stepModeActive = false;
+        stepI = 0;
+        stepJ = 0;
+        mergeSteps.clear();
+        mergeStepIndex = 0;
+        onGenerate(null);
+        setControlsEnabled(true);
+        statusLabel.setText("Reset and generated new data");
+    }
+
+    private boolean advanceBubbleStep() {
+        int n = currentData.length;
+        if (n <= 1) return true;
+        if (stepI >= n - 1) return true;
+
+        if (currentData[stepJ] > currentData[stepJ + 1]) {
+            int tmp = currentData[stepJ];
+            currentData[stepJ] = currentData[stepJ + 1];
+            currentData[stepJ + 1] = tmp;
+        }
+
+        stepJ++;
+        if (stepJ >= n - 1 - stepI) {
+            stepJ = 0;
+            stepI++;
+        }
+
+        return stepI >= n - 1;
+    }
+
+    private void startMergeStepMode() {
+        mergeSteps.clear();
+        mergeStepIndex = 0;
+        statusLabel.setText("Step mode: Merge Sort");
+
+        int[] work = currentData.clone();
+        recordMergeSteps(work);
         setControlsEnabled(false);
 
-        SwingWorker<Void, int[]> worker = new SwingWorker<>() {
-            long elapsedMicros;
-
-            @Override
-            protected Void doInBackground() {
-                long start = System.nanoTime();
-                sorter.sort(dataCopy);
-                elapsedMicros = (System.nanoTime() - start) / 1_000;
-                return null;
-            }
-
-            @Override
-            protected void done() {
-                currentData = dataCopy;
-                chartPanel.setData(currentData);
-                statusLabel.setText("Done: " + sorter.name() + " elapsed=" + elapsedMicros + " µs");
+        stepTimer = new Timer(50, ev -> {
+            if (mergeStepIndex >= mergeSteps.size()) {
+                statusLabel.setText("Step mode: completed");
+                stopStepTimer();
                 setControlsEnabled(true);
+                return;
             }
-        };
-        worker.execute();
+            currentData = mergeSteps.get(mergeStepIndex).clone();
+            chartPanel.setData(currentData);
+            mergeStepIndex++;
+            statusLabel.setText("Merge step " + mergeStepIndex + "/" + mergeSteps.size());
+        });
+        stepTimer.start();
+    }
+
+    private void startSelectionStepMode() {
+        mergeSteps.clear();
+        mergeStepIndex = 0;
+        statusLabel.setText("Step mode: Selection Sort");
+
+        int[] work = currentData.clone();
+        recordSelectionSteps(work);
+        setControlsEnabled(false);
+
+        stepTimer = new Timer(50, ev -> {
+            if (mergeStepIndex >= mergeSteps.size()) {
+                statusLabel.setText("Step mode: completed");
+                stopStepTimer();
+                setControlsEnabled(true);
+                return;
+            }
+            currentData = mergeSteps.get(mergeStepIndex).clone();
+            chartPanel.setData(currentData);
+            mergeStepIndex++;
+            statusLabel.setText("Selection step " + mergeStepIndex + "/" + mergeSteps.size());
+        });
+        stepTimer.start();
+    }
+
+    private void recordMergeSteps(int[] arr) {
+        int[] temp = new int[arr.length];
+        mergeSortWithSnapshot(arr, temp, 0, arr.length - 1);
+    }
+
+    private void recordSelectionSteps(int[] arr) {
+        int n = arr.length;
+        for (int i = 0; i < n - 1; i++) {
+            int minIndex = i;
+            for (int j = i + 1; j < n; j++) {
+                if (arr[j] < arr[minIndex]) {
+                    minIndex = j;
+                }
+            }
+            int tmp = arr[minIndex];
+            arr[minIndex] = arr[i];
+            arr[i] = tmp;
+            mergeSteps.add(arr.clone());
+        }
+    }
+
+    private void mergeSortWithSnapshot(int[] arr, int[] temp, int left, int right) {
+        if (left >= right) return;
+        int mid = (left + right) / 2;
+        mergeSortWithSnapshot(arr, temp, left, mid);
+        mergeSortWithSnapshot(arr, temp, mid + 1, right);
+        mergeWithSnapshot(arr, temp, left, mid, right);
+    }
+
+    private void mergeWithSnapshot(int[] arr, int[] temp, int left, int mid, int right) {
+        int i = left;
+        int j = mid + 1;
+        int k = left;
+        while (i <= mid && j <= right) {
+            if (arr[i] <= arr[j]) {
+                temp[k++] = arr[i++];
+            } else {
+                temp[k++] = arr[j++];
+            }
+        }
+        while (i <= mid) temp[k++] = arr[i++];
+        while (j <= right) temp[k++] = arr[j++];
+        for (int t = left; t <= right; t++) {
+            arr[t] = temp[t];
+            mergeSteps.add(arr.clone());
+        }
+    }
+
+    private void stopStepTimer() {
+        if (stepTimer != null) {
+            stepTimer.stop();
+            stepTimer = null;
+        }
     }
 
     private void setControlsEnabled(boolean enabled) {
