@@ -49,6 +49,9 @@ public class DataGenerator {
 
     private void fillAlmostSorted(int[] arr, Random rand) {
         fillAscending(arr);
+        if (arr.length <= 1) {
+            return;
+        }
         int swaps = Math.max(1, arr.length / 20);
         for (int k = 0; k < swaps; k++) {
             int i = rand.nextInt(arr.length);
@@ -67,4 +70,3 @@ public class DataGenerator {
         }
     }
 }
-
