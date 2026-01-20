@@ -1,5 +1,7 @@
 package sorting;
 
+import java.util.Arrays;
+
 public class SortStep {
     public final int[] data;
     public final int compareA;
@@ -8,7 +10,7 @@ public class SortStep {
     public final int rangeR;
 
     public SortStep(int[] data, int compareA, int compareB, int rangeL, int rangeR) {
-        this.data = data;
+        this.data = Arrays.copyOf(data, data.length);
         this.compareA = compareA;
         this.compareB = compareB;
         this.rangeL = rangeL;
