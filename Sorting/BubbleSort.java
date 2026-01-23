@@ -1,5 +1,3 @@
-package sorting;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -57,4 +55,3 @@ public class BubbleSort implements StepSortable {
         return steps;
     }
 }
-

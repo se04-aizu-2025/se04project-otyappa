@@ -1,5 +1,3 @@
-package sorting;
-
 import java.util.Random;
 public class DataGenerator {
 
