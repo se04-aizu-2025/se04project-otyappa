@@ -21,6 +21,7 @@ public class MergeSort implements StepSortable {
         int[] arr = input.clone();
         List<SortStep> steps = new ArrayList<>();
         if (arr.length <= 1) return steps;
+
         int[] temp = new int[arr.length];
         mergeSortWithSteps(arr, temp, 0, arr.length - 1, steps);
         return steps;
@@ -39,9 +40,12 @@ public class MergeSort implements StepSortable {
 
     private void mergeSortWithSteps(int[] arr, int[] temp, int left, int right, List<SortStep> steps) {
         if (left >= right) return;
+
         int mid = (left + right) / 2;
+
         mergeSortWithSteps(arr, temp, left, mid, steps);
         mergeSortWithSteps(arr, temp, mid + 1, right, steps);
+
         mergeWithSteps(arr, temp, left, mid, right, steps);
     }
 
@@ -73,29 +77,35 @@ public class MergeSort implements StepSortable {
         int i = left;
         int j = mid + 1;
         int k = left;
+
         while (i <= mid && j <= right) {
             int ca = i;
             int cb = j;
+
             if (arr[i] <= arr[j]) {
                 temp[k] = arr[i++];
             } else {
                 temp[k] = arr[j++];
             }
+
             recordStep(arr, temp, left, right, ca, cb, k, steps);
             k++;
         }
+
         while (i <= mid) {
             int ca = i;
             temp[k] = arr[i++];
             recordStep(arr, temp, left, right, ca, -1, k, steps);
             k++;
         }
+
         while (j <= right) {
             int cb = j;
             temp[k] = arr[j++];
             recordStep(arr, temp, left, right, -1, cb, k, steps);
             k++;
         }
+
         for (int t = left; t <= right; t++) {
             arr[t] = temp[t];
         }
