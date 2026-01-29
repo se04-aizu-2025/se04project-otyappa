@@ -45,11 +45,11 @@ public class DataGenerator {
     }
 
     // ----------------------------
-    // もともとの機能（Pattern生成）
+    // GUI(君のSortingGUI)が使ってる形
     // ----------------------------
 
     /**
-     * Patternを指定してデータ生成（seedあり）
+     * GUI側が  generator.generate(Pattern.RANDOM, size, seed) みたいに呼ぶ想定のメソッド
      */
     public int[] generate(Pattern pattern, int size, long seed) {
         if (size < 0) throw new IllegalArgumentException("size must be non-negative");
@@ -58,46 +58,32 @@ public class DataGenerator {
         Random rand = new Random(seed);
 
         switch (pattern) {
-            case RANDOM -> fillRandom(arr, rand, size);
+            case RANDOM -> fillRandom(arr, rand);
             case ASCENDING -> fillAscending(arr);
             case DESCENDING -> fillDescending(arr);
             case ALMOST_SORTED -> fillAlmostSorted(arr, rand);
             case MANY_DUPLICATES -> fillManyDuplicates(arr, rand);
-            default -> throw new IllegalArgumentException("Unknown pattern: " + pattern);
+            default -> fillRandom(arr, rand);
         }
         return arr;
     }
 
-    /**
-     * Pattern生成のstatic版（GUI側がstaticで呼びたくなった時用）
-     */
-    public static int[] generate(Pattern pattern, int size, long seed) {
-        return new DataGenerator().generate(pattern, size, seed);
-    }
-
-    private void fillRandom(int[] arr, Random rand, int size) {
-        for (int i = 0; i < size; i++) {
-            arr[i] = rand.nextInt(size * 3 + 1);
-        }
+    private void fillRandom(int[] arr, Random rand) {
+        for (int i = 0; i < arr.length; i++) arr[i] = rand.nextInt(100) + 1;
     }
 
     private void fillAscending(int[] arr) {
-        for (int i = 0; i < arr.length; i++) {
-            arr[i] = i;
-        }
+        for (int i = 0; i < arr.length; i++) arr[i] = i + 1;
     }
 
     private void fillDescending(int[] arr) {
-        for (int i = 0; i < arr.length; i++) {
-            arr[i] = arr.length - 1 - i; // 0..n-1 の逆順に揃える
-        }
+        for (int i = 0; i < arr.length; i++) arr[i] = arr.length - i;
     }
 
     private void fillAlmostSorted(int[] arr, Random rand) {
         fillAscending(arr);
-        if (arr.length <= 1) return;
-
-        int swaps = Math.max(1, arr.length / 20);
+        // 少しだけシャッフルして「ほぼソート済み」にする
+        int swaps = Math.max(1, arr.length / 10);
         for (int k = 0; k < swaps; k++) {
             int i = rand.nextInt(arr.length);
             int j = rand.nextInt(arr.length);
@@ -108,10 +94,7 @@ public class DataGenerator {
     }
 
     private void fillManyDuplicates(int[] arr, Random rand) {
-        // 小さい値域で乱数を振ることで重複を増やす
-        int range = Math.max(1, Math.min(10, arr.length / 3));
-        for (int i = 0; i < arr.length; i++) {
-            arr[i] = rand.nextInt(range);
-        }
+        // 値の種類を少なくして重複多めに
+        for (int i = 0; i < arr.length; i++) arr[i] = rand.nextInt(10) + 1;
     }
 }
