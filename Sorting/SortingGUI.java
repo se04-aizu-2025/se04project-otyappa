@@ -50,7 +50,8 @@ public class SortingGUI {
 
     private JButton chooseFileButton;
     private JButton generateButton;
-    private JButton stepButton;
+    private JButton startButton;
+    private JButton raceButton;
     private JButton resetButton;
 
     // ----- Center View -----
@@ -70,11 +71,12 @@ public class SortingGUI {
     private final JLabel statusLabel = new JLabel("Ready");
     private final JLabel metricsLabel = new JLabel("Speed 100%");
 
-    private final JTextArea latestArea = new JTextArea(12, 26);
-    private final JTextArea historyArea = new JTextArea(14, 26);
+    private final JTextArea latestArea = new JTextArea(13, 28);
+    private final JTextArea historyArea = new JTextArea(16, 28);
 
     // ----- Playback / Steps -----
     private Timer timer;
+    private boolean isRaceMode = false;
 
     // Left run
     private List<SortStep> stepsL = List.of();
@@ -88,9 +90,13 @@ public class SortingGUI {
     private int[] curR = new int[0];
     private int compareAR = -1, compareBR = -1, rangeLR = -1, rangeRR = -1;
 
-    // Metrics (approx)
+    // Metrics (approx) + time
     private long startNs = 0L;
     private long endNs = 0L;
+
+    // Finish time per side (for race)
+    private long finishNsL = 0L;
+    private long finishNsR = 0L;
 
     private int comparesL = 0, writesL = 0;
     private int comparesR = 0, writesR = 0;
@@ -102,7 +108,7 @@ public class SortingGUI {
     private int tick = 0;
     private int totalTicks = 1;
 
-    // Playback shaping (kept simple + safe)
+    // Playback shaping (simple + safe)
     private static final int TARGET_MS_AT_N50 = 10_000;
     private static final int FRAME_DELAY_MS = 20;
     private static final int TARGET_MIN_MS = 2_000;
@@ -116,7 +122,7 @@ public class SortingGUI {
     private void start() {
         JFrame frame = new JFrame("Sorting GUI");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(1150, 700);
+        frame.setSize(1180, 720);
         frame.setLayout(new BorderLayout());
 
         // Fill algo combos
@@ -127,22 +133,22 @@ public class SortingGUI {
         algoLeftCombo.setSelectedIndex(0);
         algoRightCombo.setSelectedIndex(1 < sorters.size() ? 1 : 0);
 
-        // ----- Controls (uniform grid) -----
+        // Controls (uniform grid)
         JPanel controls = buildControlsPanel();
         frame.add(controls, BorderLayout.NORTH);
 
-        // ----- Center cards -----
+        // Center cards
         centerPanel.add(chartSingle, "SINGLE");
         splitPane.setResizeWeight(0.5);
         splitPane.setContinuousLayout(true);
         centerPanel.add(splitPane, "SPLIT");
         frame.add(centerPanel, BorderLayout.CENTER);
 
-        // ----- Right result panel -----
+        // Right result panel
         JPanel rightPanel = buildRightPanel();
         frame.add(rightPanel, BorderLayout.EAST);
 
-        // ----- Bottom status -----
+        // Bottom status
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
         bottom.add(statusLabel, BorderLayout.WEST);
@@ -151,11 +157,8 @@ public class SortingGUI {
 
         // Listeners
         inputModeCombo.addActionListener(e -> updateInputModeUI());
-        compareCheck.addActionListener(e -> {
-            updateCompareUI();
-            // update titles on split pane
-            updateChartTitles();
-        });
+
+        compareCheck.addActionListener(e -> updateCompareUI());
 
         speedSlider.addChangeListener(e -> {
             speedValueLabel.setText(speedSlider.getValue() + "%");
@@ -169,7 +172,6 @@ public class SortingGUI {
         // Initial UI state
         updateInputModeUI();
         updateCompareUI();
-        updateChartTitles();
 
         // Start with generated data
         onGenerate(null);
@@ -183,7 +185,6 @@ public class SortingGUI {
         c.insets = new Insets(4, 6, 4, 6);
         c.anchor = GridBagConstraints.WEST;
 
-        // Helper: label style
         Font labelFont = p.getFont().deriveFont(Font.PLAIN, 12f);
 
         // Row 0
@@ -230,7 +231,7 @@ public class SortingGUI {
         row = 2;
         addLabel(p, c, row, 0, "Values", labelFont);
         c.gridx = 1; c.gridy = row; c.gridwidth = 3; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
-        manualInputField.setPreferredSize(new Dimension(300, 26));
+        manualInputField.setPreferredSize(new Dimension(320, 26));
         manualInputField.setText("5 1 4 2 3");
         p.add(manualInputField, c);
         c.gridwidth = 1;
@@ -242,10 +243,10 @@ public class SortingGUI {
         p.add(chooseFileButton, c);
 
         c.gridx = 5; c.gridy = row; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
-        filePathLabel.setPreferredSize(new Dimension(200, 18));
+        filePathLabel.setPreferredSize(new Dimension(220, 18));
         p.add(filePathLabel, c);
 
-        // Row 3 - Buttons + Compare
+        // Row 3
         row = 3;
 
         compareCheck.setSelected(false);
@@ -256,15 +257,19 @@ public class SortingGUI {
         generateButton = new JButton("Generate");
         generateButton.addActionListener(this::onGenerate);
 
-        stepButton = new JButton("Start");
-        stepButton.addActionListener(this::onStart);
+        startButton = new JButton("Start");
+        startButton.addActionListener(this::onStart);
+
+        raceButton = new JButton("Race");
+        raceButton.addActionListener(this::onRace);
 
         resetButton = new JButton("Reset");
         resetButton.addActionListener(this::onReset);
 
         JPanel btns = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         btns.add(generateButton);
-        btns.add(stepButton);
+        btns.add(startButton);
+        btns.add(raceButton);
         btns.add(resetButton);
 
         c.gridx = 4; c.gridy = row; c.gridwidth = 3; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
@@ -306,8 +311,8 @@ public class SortingGUI {
         right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
         right.setBorder(BorderFactory.createEmptyBorder(8, 6, 8, 8));
 
-        latestScroll.setPreferredSize(new Dimension(300, 250));
-        historyScroll.setPreferredSize(new Dimension(300, 350));
+        latestScroll.setPreferredSize(new Dimension(320, 260));
+        historyScroll.setPreferredSize(new Dimension(320, 390));
 
         right.add(latestScroll);
         right.add(Box.createVerticalStrut(8));
@@ -323,16 +328,10 @@ public class SortingGUI {
         return p;
     }
 
-    private void updateChartTitles() {
-        // titles are handled by the titled borders around charts (Left/Right).
-        // You can enhance later if needed.
-    }
-
     private void updateCompareUI() {
         boolean compare = compareCheck.isSelected();
         algoRightCombo.setEnabled(compare);
         centerCards.show(centerPanel, compare ? "SPLIT" : "SINGLE");
-        // Keep split divider reasonable
         splitPane.setDividerLocation(0.5);
     }
 
@@ -361,12 +360,13 @@ public class SortingGUI {
             selectedFile = chooser.getSelectedFile();
             filePathLabel.setText(selectedFile.getName());
             statusLabel.setText("Selected file: " + selectedFile.getAbsolutePath());
-            appendHistory("Selected file: " + selectedFile.getAbsolutePath());
+            appendHistory(block("Selected file", selectedFile.getAbsolutePath()));
         }
     }
 
     private void onGenerate(ActionEvent e) {
         stopPlayback(false);
+        isRaceMode = false;
 
         try {
             InputMode mode = (InputMode) inputModeCombo.getSelectedItem();
@@ -377,11 +377,13 @@ public class SortingGUI {
                 long seed = ((Number) seedSpinner.getValue()).longValue();
                 baseData = generator.generate(DataGenerator.Pattern.RANDOM, size, seed);
                 statusLabel.setText("Generated RANDOM size=" + size + " seed=" + seed);
-                appendHistory(blockLine("Generated", "RANDOM | size=" + size + " | seed=" + seed));
+                appendHistory(sep());
+                appendHistory(block("Generated", "RANDOM | size=" + size + " | seed=" + seed));
             } else if (mode == InputMode.MANUAL) {
                 baseData = parseInts(manualInputField.getText());
                 statusLabel.setText("Loaded MANUAL size=" + baseData.length);
-                appendHistory(blockLine("Loaded", "MANUAL | size=" + baseData.length));
+                appendHistory(sep());
+                appendHistory(block("Loaded", "MANUAL | size=" + baseData.length));
             } else {
                 if (selectedFile == null) onChooseFile(null);
                 if (selectedFile == null) {
@@ -391,7 +393,8 @@ public class SortingGUI {
                 String content = Files.readString(selectedFile.toPath());
                 baseData = parseInts(content);
                 statusLabel.setText("Loaded FILE size=" + baseData.length);
-                appendHistory(blockLine("Loaded", "FILE | size=" + baseData.length));
+                appendHistory(sep());
+                appendHistory(block("Loaded", "FILE | size=" + baseData.length));
             }
 
             // Reflect on chart(s)
@@ -402,17 +405,33 @@ public class SortingGUI {
                 chartSingle.setData(baseData);
             }
 
-            latestArea.setText("===== Latest Result =====\n\n(press Start)");
+            latestArea.setText("===== Latest Result =====\n\n(press Start or Race)");
             updateMetricsLabel();
 
         } catch (Exception ex) {
             statusLabel.setText("Generate failed: " + ex.getMessage());
             JOptionPane.showMessageDialog(null, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-            appendHistory(blockLine("ERROR", ex.getMessage()));
+            appendHistory(sep());
+            appendHistory(block("ERROR", ex.getMessage()));
         }
     }
 
     private void onStart(ActionEvent e) {
+        isRaceMode = false;
+        startRun(false);
+    }
+
+    private void onRace(ActionEvent e) {
+        // Race = force compare mode ON and run both sides
+        isRaceMode = true;
+        if (!compareCheck.isSelected()) {
+            compareCheck.setSelected(true);
+            updateCompareUI();
+        }
+        startRun(true);
+    }
+
+    private void startRun(boolean forceCompare) {
         stopPlayback(false);
 
         if (baseData == null || baseData.length == 0) {
@@ -420,7 +439,7 @@ public class SortingGUI {
             if (baseData == null || baseData.length == 0) return;
         }
 
-        boolean compare = compareCheck.isSelected();
+        boolean compare = forceCompare || compareCheck.isSelected();
 
         StepSortable leftSorter = sorters.get(algoLeftCombo.getSelectedIndex());
         StepSortable rightSorter = sorters.get(algoRightCombo.getSelectedIndex());
@@ -442,43 +461,50 @@ public class SortingGUI {
             idxR = 0;
         }
 
-        // Reset metrics
+        // Reset metrics/time
         startNs = System.nanoTime();
         endNs = 0L;
+        finishNsL = 0L;
+        finishNsR = 0L;
 
         comparesL = writesL = 0;
         comparesR = writesR = 0;
         prevL = null;
         prevR = null;
 
-        // Playback pacing based on dataset size and total steps (use max for compare)
         int totalSteps = Math.max(stepsL.size(), compare ? stepsR.size() : 0);
         initPacing(baseData.length, totalSteps);
 
         setControlsEnabled(false);
 
-        String runTitle = compare
-                ? ("START | Left=" + leftSorter.name() + " vs Right=" + rightSorter.name()
-                   + " | n=" + baseData.length + " | speed=" + speedSlider.getValue() + "%")
-                : ("START | Algo=" + leftSorter.name() + " | n=" + baseData.length + " | speed=" + speedSlider.getValue() + "%");
+        String header;
+        if (!compare) {
+            header = "START | Algo=" + leftSorter.name() + " | n=" + baseData.length + " | speed=" + speedSlider.getValue() + "%";
+        } else {
+            header = (isRaceMode ? "RACE! " : "START ")
+                    + "| Left=" + leftSorter.name() + " vs Right=" + rightSorter.name()
+                    + " | n=" + baseData.length + " | speed=" + speedSlider.getValue() + "%";
+        }
 
-        statusLabel.setText(runTitle);
+        statusLabel.setText(header);
         appendHistory(sep());
-        appendHistory(runTitle);
+        appendHistory(header);
         appendHistory("Left steps=" + stepsL.size() + (compare ? (" | Right steps=" + stepsR.size()) : ""));
+        appendHistory("");
 
         timer = new Timer(calcDelayMs(), ev -> onTick(compare, leftSorter, rightSorter));
         timer.setInitialDelay(0);
         timer.setCoalesce(true);
         timer.start();
+
         updateMetricsLabel();
     }
 
     private void onReset(ActionEvent e) {
         stopPlayback(false);
         setControlsEnabled(true);
+        isRaceMode = false;
 
-        // Keep current baseData view
         if (compareCheck.isSelected()) {
             chartLeft.setData(baseData);
             chartRight.setData(baseData);
@@ -487,44 +513,50 @@ public class SortingGUI {
         }
 
         statusLabel.setText("Reset");
-        latestArea.setText("===== Latest Result =====\n\n(press Start)");
+        latestArea.setText("===== Latest Result =====\n\n(press Start or Race)");
         updateMetricsLabel();
-        appendHistory(blockLine("Reset", ""));
+        appendHistory(sep());
+        appendHistory(block("Reset", ""));
     }
 
     // ---------------- Playback core ----------------
 
     private void onTick(boolean compareMode, StepSortable leftSorter, StepSortable rightSorter) {
-        // Completion check
         boolean doneL = idxL >= stepsL.size();
         boolean doneR = !compareMode || idxR >= stepsR.size();
+
+        // record finish timestamps (race)
+        if (doneL && finishNsL == 0L) finishNsL = System.nanoTime();
+        if (compareMode && doneR && finishNsR == 0L) finishNsR = System.nanoTime();
 
         if (doneL && doneR) {
             endNs = System.nanoTime();
             if (timer != null) timer.stop();
             timer = null;
 
-            // Update final view (last data already set)
-            statusLabel.setText("Completed");
             setControlsEnabled(true);
 
-            // Latest result (pretty)
-            latestArea.setText(buildLatestResult(compareMode, leftSorter.name(), rightSorter.name()));
+            String winnerLine = "";
+            if (compareMode) {
+                winnerLine = decideWinner(leftSorter.name(), rightSorter.name());
+                statusLabel.setText("Completed. " + winnerLine);
+            } else {
+                statusLabel.setText("Completed");
+            }
 
-            // History block
-            appendHistory(buildHistoryBlock(compareMode, leftSorter.name(), rightSorter.name()));
+            latestArea.setText(buildLatestResult(compareMode, leftSorter.name(), rightSorter.name(), winnerLine));
+            appendHistory(buildHistoryBlock(compareMode, leftSorter.name(), rightSorter.name(), winnerLine));
 
             updateMetricsLabel();
+            isRaceMode = false;
             return;
         }
 
-        // Work units per tick (smooth)
         accumulator += stepsPerTickBase;
         int work = 0;
         int maxWork = 6000;
 
         while (accumulator >= 1.0 && work < maxWork) {
-            // Advance left if not done
             if (idxL < stepsL.size()) {
                 SortStep s = stepsL.get(idxL++);
                 updateMetricsForStep(true, s);
@@ -533,9 +565,10 @@ public class SortingGUI {
                 compareBL = s.compareB;
                 rangeLL = s.rangeL;
                 rangeRL = s.rangeR;
+            } else if (finishNsL == 0L) {
+                finishNsL = System.nanoTime();
             }
 
-            // Advance right if compare and not done
             if (compareMode && idxR < stepsR.size()) {
                 SortStep s = stepsR.get(idxR++);
                 updateMetricsForStep(false, s);
@@ -544,16 +577,16 @@ public class SortingGUI {
                 compareBR = s.compareB;
                 rangeLR = s.rangeL;
                 rangeRR = s.rangeR;
+            } else if (compareMode && idxR >= stepsR.size() && finishNsR == 0L) {
+                finishNsR = System.nanoTime();
             }
 
             accumulator -= 1.0;
             work++;
 
-            // if both are done, break early
             if (idxL >= stepsL.size() && (!compareMode || idxR >= stepsR.size())) break;
         }
 
-        // Draw
         if (compareMode) {
             chartLeft.setCompare(compareAL, compareBL);
             chartLeft.setMergeRange(rangeLL, rangeRL);
@@ -563,14 +596,14 @@ public class SortingGUI {
             chartRight.setMergeRange(rangeLR, rangeRR);
             chartRight.setData(curR);
 
-            statusLabel.setText("Running | Left " + leftSorter.name() + " (" + idxL + "/" + stepsL.size() + ")"
+            statusLabel.setText((isRaceMode ? "RACING" : "Running")
+                    + " | Left " + leftSorter.name() + " (" + idxL + "/" + stepsL.size() + ")"
                     + "  vs  Right " + rightSorter.name() + " (" + idxR + "/" + stepsR.size() + ")");
         } else {
             chartSingle.setCompare(compareAL, compareBL);
             chartSingle.setMergeRange(rangeLL, rangeRL);
             chartSingle.setData(curL);
 
-            // Merge range hint
             if (rangeLL >= 0 && rangeRL >= 0) {
                 statusLabel.setText("Running | " + leftSorter.name() + " (" + idxL + "/" + stepsL.size()
                         + ") | range [" + rangeLL + "," + rangeRL + "]");
@@ -583,6 +616,39 @@ public class SortingGUI {
         updateMetricsLabel();
     }
 
+    private String decideWinner(String leftName, String rightName) {
+        // 1) earlier finish wins
+        long l = finishNsL == 0L ? Long.MAX_VALUE : finishNsL;
+        long r = finishNsR == 0L ? Long.MAX_VALUE : finishNsR;
+
+        // treat very small differences as tie (human-visible)
+        long diff = Math.abs(l - r);
+        long tieThresholdNs = 25_000_000L; // 25ms
+
+        if (diff > tieThresholdNs) {
+            return (l < r) ? ("Winner: " + leftName + " (Left)") : ("Winner: " + rightName + " (Right)");
+        }
+
+        // 2) tie-breaker: fewer steps
+        int stepsLeft = stepsL.size();
+        int stepsRight = stepsR.size();
+        if (stepsLeft != stepsRight) {
+            return (stepsLeft < stepsRight) ? ("Winner: " + leftName + " (fewer steps)") : ("Winner: " + rightName + " (fewer steps)");
+        }
+
+        // 3) tie-breaker: fewer compares
+        if (comparesL != comparesR) {
+            return (comparesL < comparesR) ? ("Winner: " + leftName + " (fewer compares)") : ("Winner: " + rightName + " (fewer compares)");
+        }
+
+        // 4) tie-breaker: fewer writes
+        if (writesL != writesR) {
+            return (writesL < writesR) ? ("Winner: " + leftName + " (fewer writes)") : ("Winner: " + rightName + " (fewer writes)");
+        }
+
+        return "Result: Draw";
+    }
+
     private void initPacing(int n, int totalSteps) {
         tick = 0;
         accumulator = 0.0;
@@ -593,17 +659,13 @@ public class SortingGUI {
 
         totalTicks = Math.max(1, targetMs / FRAME_DELAY_MS);
         stepsPerTickBase = Math.max(1.0, totalSteps) / (double) totalTicks;
-
-        // speed affects timer delay, not steps/tick (so it's visually obvious)
     }
 
     private void updateMetricsForStep(boolean isLeft, SortStep s) {
-        // compares: count if compare indices set
         if (s.compareA >= 0 || s.compareB >= 0) {
             if (isLeft) comparesL++; else comparesR++;
         }
 
-        // writes: approximate by diff count vs previous array
         if (isLeft) {
             if (prevL != null) writesL += countDiff(prevL, s.data);
             prevL = s.data;
@@ -630,6 +692,7 @@ public class SortingGUI {
 
         if (!keepLatest) {
             startNs = endNs = 0L;
+            finishNsL = finishNsR = 0L;
             comparesL = writesL = comparesR = writesR = 0;
             prevL = prevR = null;
         }
@@ -637,7 +700,7 @@ public class SortingGUI {
     }
 
     private void setControlsEnabled(boolean enabled) {
-        // allow speed slider always
+        // speed always adjustable
         speedSlider.setEnabled(true);
 
         inputModeCombo.setEnabled(enabled);
@@ -646,8 +709,9 @@ public class SortingGUI {
         algoRightCombo.setEnabled(enabled && compareCheck.isSelected());
 
         generateButton.setEnabled(enabled);
-        stepButton.setEnabled(enabled);
-        resetButton.setEnabled(true); // reset always allowed
+        startButton.setEnabled(enabled);
+        raceButton.setEnabled(enabled); // Race can always be used
+        resetButton.setEnabled(true);
 
         if (enabled) {
             updateInputModeUI();
@@ -696,12 +760,18 @@ public class SortingGUI {
 
     // ---------------- Result formatting ----------------
 
-    private String buildLatestResult(boolean compareMode, String leftName, String rightName) {
+    private String buildLatestResult(boolean compareMode, String leftName, String rightName, String winnerLine) {
         long end = (endNs != 0L) ? endNs : System.nanoTime();
         double sec = (startNs == 0L) ? 0.0 : (end - startNs) / 1_000_000_000.0;
 
         StringBuilder sb = new StringBuilder();
         sb.append("===== Latest Result =====\n\n");
+
+        if (compareMode && winnerLine != null && !winnerLine.isEmpty()) {
+            sb.append(winnerLine).append("\n");
+            sb.append("\n");
+        }
+
         sb.append("Input  : ").append(inputModeCombo.getSelectedItem()).append("\n");
         sb.append("Size   : ").append(baseData == null ? 0 : baseData.length).append("\n");
         sb.append("Speed  : ").append(speedSlider.getValue()).append("% (").append(calcDelayMs()).append("ms)\n");
@@ -714,14 +784,19 @@ public class SortingGUI {
             sb.append("Compares  : ").append(comparesL).append("\n");
             sb.append("Writes    : ").append(writesL).append("\n");
         } else {
+            double secL = (finishNsL == 0L || startNs == 0L) ? 0.0 : (finishNsL - startNs) / 1_000_000_000.0;
+            double secR = (finishNsR == 0L || startNs == 0L) ? 0.0 : (finishNsR - startNs) / 1_000_000_000.0;
+
             sb.append("[Left]\n");
             sb.append("Algorithm : ").append(leftName).append("\n");
+            sb.append("Finish    : ").append(String.format("%.2fs\n", secL));
             sb.append("Steps     : ").append(stepsL.size()).append("\n");
             sb.append("Compares  : ").append(comparesL).append("\n");
             sb.append("Writes    : ").append(writesL).append("\n\n");
 
             sb.append("[Right]\n");
             sb.append("Algorithm : ").append(rightName).append("\n");
+            sb.append("Finish    : ").append(String.format("%.2fs\n", secR));
             sb.append("Steps     : ").append(stepsR.size()).append("\n");
             sb.append("Compares  : ").append(comparesR).append("\n");
             sb.append("Writes    : ").append(writesR).append("\n");
@@ -731,36 +806,45 @@ public class SortingGUI {
         return sb.toString();
     }
 
-    private String buildHistoryBlock(boolean compareMode, String leftName, String rightName) {
+    private String buildHistoryBlock(boolean compareMode, String leftName, String rightName, String winnerLine) {
         long end = (endNs != 0L) ? endNs : System.nanoTime();
         double sec = (startNs == 0L) ? 0.0 : (end - startNs) / 1_000_000_000.0;
 
         StringBuilder sb = new StringBuilder();
         sb.append(sep());
-        sb.append("DONE | ").append("Input=").append(inputModeCombo.getSelectedItem())
+        sb.append("DONE | Input=").append(inputModeCombo.getSelectedItem())
           .append(" | n=").append(baseData == null ? 0 : baseData.length)
           .append(" | speed=").append(speedSlider.getValue()).append("% (").append(calcDelayMs()).append("ms)")
           .append(String.format(" | time=%.2fs\n", sec));
+
+        if (compareMode && winnerLine != null && !winnerLine.isEmpty()) {
+            sb.append(winnerLine).append("\n");
+        }
 
         if (!compareMode) {
             sb.append("Algo=").append(leftName)
               .append(" | steps=").append(stepsL.size())
               .append(" | compares=").append(comparesL)
               .append(" | writes=").append(writesL)
-              .append("\n");
+              .append("\n\n");
         } else {
+            double secL = (finishNsL == 0L || startNs == 0L) ? 0.0 : (finishNsL - startNs) / 1_000_000_000.0;
+            double secR = (finishNsR == 0L || startNs == 0L) ? 0.0 : (finishNsR - startNs) / 1_000_000_000.0;
+
             sb.append("Left = ").append(leftName)
+              .append(String.format(" | finish=%.2fs", secL))
               .append(" | steps=").append(stepsL.size())
               .append(" | compares=").append(comparesL)
               .append(" | writes=").append(writesL)
               .append("\n");
+
             sb.append("Right= ").append(rightName)
+              .append(String.format(" | finish=%.2fs", secR))
               .append(" | steps=").append(stepsR.size())
               .append(" | compares=").append(comparesR)
               .append(" | writes=").append(writesR)
-              .append("\n");
+              .append("\n\n");
         }
-        sb.append("\n");
         return sb.toString();
     }
 
@@ -774,7 +858,7 @@ public class SortingGUI {
         return "----------------------------------------\n";
     }
 
-    private static String blockLine(String head, String body) {
+    private static String block(String head, String body) {
         if (body == null || body.isEmpty()) return head + "\n";
         return head + " : " + body + "\n";
     }
